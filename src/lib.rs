@@ -1,5 +1,5 @@
 #![warn(clippy::all, rust_2018_idioms)]
 
-mod app;
+pub mod app;
 mod components;
-pub mod structs;
+mod structs;

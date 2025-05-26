@@ -1,4 +1,5 @@
 #![warn(clippy::all, rust_2018_idioms)]
+#![deny(clippy::panic, clippy::unwrap_used)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 // When compiling natively:
@@ -24,7 +25,7 @@ fn main() -> eframe::Result {
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(livechart::structs::LivechartAppData::new(cc)))
+            Ok(Box::new(livechart::app::LivechartApp::new(cc)))
         }),
     )
 }

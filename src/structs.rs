@@ -1,19 +1,31 @@
 use egui::Vec2;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default, Debug)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct LivechartAppData {
+pub struct LiveChartAppData {
     // #[serde(skip)] // This how you opt-out of serialization of a field
     // value: f32,
-    pub pixels_coords: Vec<PixelCoordinate>,
-    pub zoom_state: Option<ZoomState>,
+    pub pixel_coords: Vec<PixelCoordinate>,
+    #[serde(skip)]
+    pub view_state: Option<ZoomState>,
+}
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
+pub struct CoordinatePair {
+    pub pixels: PixelCoordinate,
+    pub real: RealCoordinate,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
 pub struct PixelCoordinate {
     pub x: f32,
     pub y: f32,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
+pub struct RealCoordinate {
+    pub lat: f64,
+    pub lon: f64,
 }
 
 impl std::convert::From<egui::Pos2> for PixelCoordinate {
@@ -31,16 +43,28 @@ impl Default for PixelCoordinate {
     }
 }
 
-impl Default for LivechartAppData {
+impl Default for crate::app::LivechartApp {
     fn default() -> Self {
         Self {
-            pixels_coords: Vec::new(),
-            zoom_state: None,
+            data: LiveChartAppData {
+                pixel_coords: Vec::new(),
+                view_state: None,
+            },
         }
     }
 }
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct ZoomState {
     pub scale: f32,
     pub offset: Vec2,
+}
+
+impl Default for ZoomState {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            offset: Vec2 { x: 0.0, y: 0.0 },
+        }
+    }
 }

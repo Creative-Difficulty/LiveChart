@@ -1,9 +1,21 @@
-use egui::{Color32, Id, Pos2, Sense, Vec2};
+use egui::Vec2;
 use image::GenericImageView;
 
-use crate::{components::*, structs::LivechartAppData};
+use crate::{
+    components::*,
+    structs::{LiveChartAppData, PixelCoordinate, ZoomState},
+};
 
-impl LivechartAppData {
+/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)] // if we add new fields, give them default values when deserializing old state
+pub struct LivechartApp {
+    pub data: LiveChartAppData,
+}
+
+//TODO Also clamp saved point positions to prevent overflow on image or dont to display that something with the placement went wrong
+
+impl LivechartApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
@@ -19,7 +31,7 @@ impl LivechartAppData {
     }
 }
 
-impl eframe::App for LivechartAppData {
+impl eframe::App for LivechartApp {
     /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
@@ -50,37 +62,23 @@ impl eframe::App for LivechartAppData {
         egui::SidePanel::right("sidebar").show(ctx, |ui: &mut egui::Ui| {
             ui.heading("Points");
             egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
-                if !self.pixels_coords.is_empty() {
+                if !self.data.pixel_coords.is_empty() {
                     // TODO? Avoid cloning to put newest on top
-                    let mut display_list = self.pixels_coords.clone();
+                    let mut display_list = self.data.pixel_coords.clone();
                     display_list.reverse();
-                    for point in display_list {
-                        // let label =
-                        //     ui.label(format!("Selected point: ({:.1}, {:.1})", point.x, point.y));
-                        let response = ui.add_sized(
-                            [ui.available_width(), 30.0],
-                            egui::Label::new(format!("x: {} y: {}", point.x, point.y)), // .sense(Sense::hover()),console.log();
-                        );
+                    let display_iter = display_list.iter().peekable();
 
-                        // Draw highlight if hovered
-                        if response.hovered() {
-                            let rect = response.rect;
-                            let painter = ui.painter();
-                            painter.rect_filled(rect, 0.0, Color32::DARK_GRAY);
-                            // Redraw text over the highlight
-                            painter.text(
-                                rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                format!("{:?}", point),
-                                egui::TextStyle::Body.resolve(ui.style()),
-                                Color32::WHITE,
-                            );
-                        }
+                    // GOODEXAMPLE: Treating the last element of an iterator different than the rest.
+                    //  while let Some(point) = display_iter.next() {
+                    //     label_and_delete_button(ui, point, &mut self.data.pixel_coords);
+                    //     if display_iter.peek().is_some() {
+                    //         ui.separator();
+                    //     }
+                    // }
 
-                        // Draw a separator after each item except the last
-                        if self.pixels_coords.iter().peekable().peek().is_some() {
-                            ui.add(egui::Separator::default());
-                        }
+                    for point in display_iter {
+                        label_and_delete_button(ui, point, &mut self.data.pixel_coords);
+                        ui.separator();
                     }
                 } else {
                     ui.label("Click on the image to select a point.");
@@ -89,116 +87,80 @@ impl eframe::App for LivechartAppData {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Load image dimensions
-            let image_size = image::open("./test_chart.png").unwrap().dimensions();
+            // Load image dimensions once (could be cached if needed)
+            let image_size = image::open("./test_chart_vertical_ils_plate.png")
+                .unwrap()
+                .dimensions();
             let image_size_vec = Vec2::new(image_size.0 as f32, image_size.1 as f32);
 
             // Initialize or update zoom state
-            let zoom_state = self.zoom_state.get_or_insert(crate::structs::ZoomState {
-                scale: 1.0,
-                offset: Vec2::ZERO,
-            });
+            let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
 
-            // Handle zoom input (mouse wheel and pinch gestures)
-            let zoom_response = ui.input(|i| {
-                let mut zoom_delta = i.zoom_delta() - 1.0; // -1.0 to +1.0 range
-                if i.pointer.primary_down() {
-                    zoom_delta = 0.0; // Disable zoom while panning
-                }
-                zoom_delta
-            });
+            // Handle user input
+            handle_zoom_input(ui, zoom_state);
+            handle_pan_input(ui, zoom_state);
 
-            // Handle pan input
-            let pan_response = ui.input(|i| {
-                if i.pointer.primary_down() {
-                    i.pointer.delta() * Vec2::new(1.0, 1.0)
-                } else {
-                    Vec2::ZERO
-                }
-            });
+            // Calculate display parameters
+            let display_params = calculate_display_parameters(ui, image_size_vec, zoom_state);
 
-            // Update zoom and pan
-            if zoom_response != 0.0 {
-                let zoom_factor = 1.0 + zoom_response * 0.1; // Adjust zoom sensitivity
-                zoom_state.scale *= zoom_factor;
-                zoom_state.scale = zoom_state.scale.clamp(0.1, 10.0); // Limit zoom range
-            }
+            // Display the image and get the response
+            let image_response = display_image(ui, display_params);
 
-            if pan_response != Vec2::ZERO {
-                zoom_state.offset += pan_response;
-            }
+            // Draw all the points on the image
+            draw_points(self, ui, &image_response, image_size);
 
-            // Calculate available space with padding
-            let available_rect = ui.available_rect_before_wrap();
-            let padding = 20.0;
-            let max_size = available_rect.size() - Vec2::splat(padding * 2.0);
-
-            // Calculate base scale (without zoom)
-            let base_scale = (max_size.x / image_size_vec.x).min(max_size.y / image_size_vec.y);
-            let total_scale = base_scale * zoom_state.scale;
-            let scaled_size = image_size_vec * total_scale;
-
-            // Apply pan offset
-            let mut image_rect = egui::Rect::from_center_size(available_rect.center(), scaled_size);
-            image_rect.min += zoom_state.offset;
-            image_rect.max += zoom_state.offset;
-
-            // Display the image
-            let imageresponse = ui.put(
-                image_rect,
-                egui::Image::new(egui::include_image!("../test_chart.png"))
-                    .sense(egui::Sense::drag().union(egui::Sense::click())),
-            );
-
-            // Draw the selected points
-            for point in &self.pixels_coords {
-                let image_pos = Pos2::new(
-                    (point.x / image_size.0 as f32) * imageresponse.rect.width(),
-                    (point.y / image_size.1 as f32) * imageresponse.rect.height(),
-                ) + imageresponse.rect.min.to_vec2();
-
-                let painter = ui.painter_at(imageresponse.rect);
-                painter.circle_filled(image_pos, 4.0 / zoom_state.scale, Color32::BLUE);
-            }
-
-            paint_red_crosshair(ui, &imageresponse);
+            // Draw crosshair
+            paint_crosshair(ui, &image_response /*ctx*/);
 
             // Handle point selection
-            if let Some(pos) = imageresponse.interact_pointer_pos() {
-                if imageresponse.clicked() {
-                    let offset = pos - imageresponse.rect.min;
-                    self.pixels_coords.push(
-                        Pos2::new(
-                            (offset.x / imageresponse.rect.width() * image_size.0 as f32)
-                                .clamp(0.0, image_size.0 as f32),
-                            (offset.y / imageresponse.rect.height() * image_size.1 as f32)
-                                .clamp(0.0, image_size.1 as f32),
-                        )
-                        .into(),
-                    );
-                }
-            }
+            handle_point_selection(self, &image_response, image_size);
 
-            let mut cursor_icon = egui::CursorIcon::Default;
+            // Update cursor icon based on interaction
+            update_cursor_icon(ctx, &image_response);
 
-            // Change cursor when dragging
-            if imageresponse.dragged() {
-                cursor_icon = egui::CursorIcon::Move;
-            } else if imageresponse.hovered() {
-                cursor_icon = egui::CursorIcon::Default;
-            }
-
-            // Set the cursor icon
-            ctx.set_cursor_icon(cursor_icon);
-
-            egui::Area::new(Id::new("resetview"))
-                .fixed_pos(egui::pos2(10.0, ctx.screen_rect().bottom() - 40.0))
-                .order(egui::Order::Foreground)
-                .show(ctx, |ui| {
-                    if ui.button("Reset View").clicked() {
-                        self.zoom_state = None;
-                    }
-                });
+            // Show reset view button
+            show_reset_button(self, ctx);
         });
+    }
+}
+
+// impl MyApp {
+//     // Increment the counter and update the label
+//     fn increment_counter(&mut self) {
+//         self.counter += 1;
+//         self.update_label_text();
+//     }
+
+//     // Update the label to reflect the current counter value
+//     fn update_label_text(&mut self) {
+//         self.label_text = format!("Counter value: {}", self.counter);
+//     }
+// }
+
+fn label_and_delete_button(
+    ui: &mut egui::Ui,
+    point: &PixelCoordinate,
+    pixel_coords: &mut Vec<PixelCoordinate>,
+) {
+    let label = ui.label(format!(
+        "Selected point: ({}, {})",
+        point.x.round(),
+        point.y.round()
+    ));
+
+    if ui
+        .add_sized(
+            Vec2 {
+                x: ui.available_width() * 0.2,
+                y: label.rect.height(),
+            },
+            egui::Button::new("Delete"),
+        )
+        .clicked()
+    {
+        //TODO: more efficient
+        if let Some(index_to_delete) = pixel_coords.iter().position(|p| p == point) {
+            pixel_coords.remove(index_to_delete);
+        }
     }
 }
