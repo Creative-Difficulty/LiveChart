@@ -110,41 +110,40 @@ pub fn display_image(ui: &mut egui::Ui, rect: egui::Rect) -> egui::Response {
     )
 }
 
-pub fn draw_points(
-    appdata: &mut LivechartApp,
+pub fn draw_pixel_coordinates(
+    point: &PixelCoordinate,
     ui: &egui::Ui,
     image_response: &egui::Response,
     image_size: (u32, u32),
 ) {
-    for point in &appdata.data.pixel_coords {
-        let norm_x = point.x / image_size.0 as f32;
-        let norm_y = point.y / image_size.1 as f32;
+    // for point in &appdata.data.pixel_coords {
+    let norm_x = point.x / image_size.0 as f32;
+    let norm_y = point.y / image_size.1 as f32;
 
-        let image_pos = image_response.rect.min
-            + egui::vec2(
-                norm_x * image_response.rect.width(),
-                norm_y * image_response.rect.height(),
-            );
+    let image_pos = image_response.rect.min
+        + egui::vec2(
+            norm_x * image_response.rect.width(),
+            norm_y * image_response.rect.height(),
+        );
 
-        let dot_radius = 4.0;
+    let dot_radius = 4.0;
+    ui.painter()
+        .circle_filled(image_pos, dot_radius, egui::Color32::BLUE);
+
+    if ui.rect_contains_pointer(egui::Rect::from_center_size(
+        image_pos,
+        egui::Vec2::splat(dot_radius * 3.0),
+    )) {
         ui.painter()
-            .circle_filled(image_pos, dot_radius, egui::Color32::BLUE);
-
-        if ui.rect_contains_pointer(egui::Rect::from_center_size(
-            image_pos,
-            egui::Vec2::splat(dot_radius * 3.0),
-        )) {
-            ui.painter()
-                .circle_stroke(image_pos, dot_radius * 1.5, (1.5, egui::Color32::WHITE));
-        }
+            .circle_stroke(image_pos, dot_radius * 1.5, (1.5, egui::Color32::WHITE));
     }
+    // }
 }
 // TODO: review AI slop below
-pub fn handle_point_selection(
-    appdata: &mut LivechartApp,
+pub fn add_point(
     image_response: &egui::Response,
     image_size: (u32, u32),
-) {
+) -> Option<PixelCoordinate> {
     if let Some(pos) = image_response.interact_pointer_pos() {
         if image_response.clicked() {
             let offset = pos - image_response.rect.min;
@@ -153,13 +152,10 @@ pub fn handle_point_selection(
             let y = (offset.y / image_response.rect.height() * image_size.1 as f32)
                 .clamp(0.0, image_size.1 as f32);
 
-            let coord = PixelCoordinate { x, y };
-
-            if !appdata.data.pixel_coords.contains(&coord) {
-                appdata.data.pixel_coords.push(coord);
-            }
+            return Some(PixelCoordinate { x, y });
         }
     }
+    None
 }
 
 pub fn update_cursor_icon(ctx: &egui::Context, image_response: &egui::Response) {

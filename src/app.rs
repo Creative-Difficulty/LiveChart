@@ -3,7 +3,7 @@ use image::GenericImageView;
 
 use crate::{
     components::*,
-    structs::{LiveChartAppData, PixelCoordinate, ZoomState},
+    structs::{CoordinatePair, LiveChartAppData, ZoomState},
 };
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
@@ -62,9 +62,9 @@ impl eframe::App for LivechartApp {
         egui::SidePanel::right("sidebar").show(ctx, |ui: &mut egui::Ui| {
             ui.heading("Points");
             egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
-                if !self.data.pixel_coords.is_empty() {
+                if !self.data.points.is_empty() {
                     // TODO? Avoid cloning to put newest on top
-                    let mut display_list = self.data.pixel_coords.clone();
+                    let mut display_list = self.data.points.clone();
                     display_list.reverse();
                     let display_iter = display_list.iter().peekable();
 
@@ -77,7 +77,7 @@ impl eframe::App for LivechartApp {
                     // }
 
                     for point in display_iter {
-                        label_and_delete_button(ui, point, &mut self.data.pixel_coords);
+                        label_with_delete_button(ui, point, &mut self.data.points);
                         ui.separator();
                     }
                 } else {
@@ -106,14 +106,21 @@ impl eframe::App for LivechartApp {
             // Display the image and get the response
             let image_response = display_image(ui, display_params);
 
+            // Handle point selection
+            if let Some(coord) = add_point(&image_response, image_size) {
+                self.data.points.push(CoordinatePair {
+                    pixels: coord,
+                    real: None,
+                });
+            }
+
             // Draw all the points on the image
-            draw_points(self, ui, &image_response, image_size);
+            for point in &self.data.points {
+                draw_pixel_coordinates(&point.pixels, ui, &image_response, image_size);
+            }
 
             // Draw crosshair
             paint_crosshair(ui, &image_response /*ctx*/);
-
-            // Handle point selection
-            handle_point_selection(self, &image_response, image_size);
 
             // Update cursor icon based on interaction
             update_cursor_icon(ctx, &image_response);
@@ -137,15 +144,15 @@ impl eframe::App for LivechartApp {
 //     }
 // }
 
-fn label_and_delete_button(
+fn label_with_delete_button(
     ui: &mut egui::Ui,
-    point: &PixelCoordinate,
-    pixel_coords: &mut Vec<PixelCoordinate>,
+    point: &CoordinatePair,
+    pixel_coords: &mut Vec<CoordinatePair>,
 ) {
     let label = ui.label(format!(
         "Selected point: ({}, {})",
-        point.x.round(),
-        point.y.round()
+        point.pixels.x.round(),
+        point.pixels.y.round()
     ));
 
     if ui

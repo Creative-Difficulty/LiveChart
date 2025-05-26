@@ -6,14 +6,14 @@ use egui::Vec2;
 pub struct LiveChartAppData {
     // #[serde(skip)] // This how you opt-out of serialization of a field
     // value: f32,
-    pub pixel_coords: Vec<PixelCoordinate>,
+    pub points: Vec<CoordinatePair>,
     #[serde(skip)]
     pub view_state: Option<ZoomState>,
 }
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
 pub struct CoordinatePair {
     pub pixels: PixelCoordinate,
-    pub real: RealCoordinate,
+    pub real: Option<RealCoordinate>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
@@ -43,11 +43,17 @@ impl Default for PixelCoordinate {
     }
 }
 
+impl Default for RealCoordinate {
+    fn default() -> Self {
+        RealCoordinate { lat: 0.0, lon: 0.0 }
+    }
+}
+
 impl Default for crate::app::LivechartApp {
     fn default() -> Self {
         Self {
             data: LiveChartAppData {
-                pixel_coords: Vec::new(),
+                points: Vec::new(),
                 view_state: None,
             },
         }
