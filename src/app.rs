@@ -1,10 +1,7 @@
 use egui::Vec2;
 use image::GenericImageView;
 
-use crate::{
-    components::*,
-    structs::{CoordinatePair, LiveChartAppData, ZoomState},
-};
+use crate::structs::{CoordinatePair, LiveChartAppData};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -43,7 +40,7 @@ impl eframe::App for LivechartApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
-                custom_theme_switch(ui);
+                self.custom_theme_switch(ui);
 
                 // NOTE: no File->Quit on web pages!
                 let is_web = cfg!(target_arch = "wasm32");
@@ -94,20 +91,20 @@ impl eframe::App for LivechartApp {
             let image_size_vec = Vec2::new(image_size.0 as f32, image_size.1 as f32);
 
             // Initialize or update zoom state
-            let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
+            // let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
 
             // Handle user input
-            handle_zoom_input(ui, zoom_state);
-            handle_pan_input(ui, zoom_state);
+            self.handle_zoom_input(ui);
+            self.handle_pan_input(ui);
 
             // Calculate display parameters
-            let display_params = calculate_display_parameters(ui, image_size_vec, zoom_state);
+            let display_params = self.calculate_display_parameters(ui, image_size_vec);
 
             // Display the image and get the response
-            let image_response = display_image(ui, display_params);
+            let image_response = self.display_image(ui, display_params);
 
             // Handle point selection
-            if let Some(coord) = add_point(&image_response, image_size) {
+            if let Some(coord) = self.add_point(&image_response, image_size) {
                 self.data.points.push(CoordinatePair {
                     pixels: coord,
                     real: None,
@@ -116,17 +113,17 @@ impl eframe::App for LivechartApp {
 
             // Draw all the points on the image
             for point in &self.data.points {
-                draw_pixel_coordinates(&point.pixels, ui, &image_response, image_size);
+                self.draw_pixel_coordinates(&point.pixels, ui, &image_response, image_size);
             }
 
             // Draw crosshair
-            paint_crosshair(ui, &image_response /*ctx*/);
+            self.paint_crosshair(ui, &image_response);
 
             // Update cursor icon based on interaction
-            update_cursor_icon(ctx, &image_response);
+            self.update_cursor_icon(ctx, &image_response);
 
             // Show reset view button
-            show_reset_button(self, ctx);
+            self.show_reset_button(ctx);
         });
     }
 }
