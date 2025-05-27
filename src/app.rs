@@ -56,32 +56,50 @@ impl eframe::App for LivechartApp {
         });
 
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        egui::SidePanel::right("sidebar").show(ctx, |ui: &mut egui::Ui| {
-            ui.heading("Points");
-            egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
-                if !self.data.points.is_empty() {
-                    // TODO? Avoid cloning to put newest on top
-                    let mut display_list = self.data.points.clone();
-                    display_list.reverse();
-                    let display_iter = display_list.iter().peekable();
+        if let Some(viewstate) = &self.data.view_state {
+            if viewstate.ps_sidebar_shown {
+                egui::SidePanel::right("sidebar")
+                    .default_width(ctx.screen_rect().width() * 0.2) // initial sidebar width
+                    .resizable(false)
+                    .show(ctx, |ui: &mut egui::Ui| {
+                        egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
+                            ui.heading("Points");
 
-                    // GOODEXAMPLE: Treating the last element of an iterator different than the rest.
-                    //  while let Some(point) = display_iter.next() {
-                    //     label_and_delete_button(ui, point, &mut self.data.pixel_coords);
-                    //     if display_iter.peek().is_some() {
-                    //         ui.separator();
-                    //     }
-                    // }
+                            ui.set_width(ctx.screen_rect().width() * 0.2);
 
-                    for point in display_iter {
-                        label_with_delete_button(ui, point, &mut self.data.points);
-                        ui.separator();
-                    }
-                } else {
-                    ui.label("Click on the image to select a point.");
-                }
-            });
-        });
+                            egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
+                                if !self.data.points.is_empty() {
+                                    // TODO? Avoid cloning to put newest on top
+                                    let mut display_list = self.data.points.clone();
+                                    display_list.reverse();
+                                    let display_iter = display_list.iter().peekable();
+
+                                    // GOODEXAMPLE: Treating the last element of an iterator different than the rest.
+                                    //  while let Some(point) = display_iter.next() {
+                                    //     label_and_delete_button(ui, point, &mut self.data.pixel_coords);
+                                    //     if display_iter.peek().is_some() {
+                                    //         ui.separator();
+                                    //     }
+                                    // }
+
+                                    for point in display_iter {
+                                        ui.horizontal_wrapped(|ui| {
+                                            label_with_delete_button(
+                                                ui,
+                                                point,
+                                                &mut self.data.points,
+                                            );
+                                        });
+                                        ui.separator();
+                                    }
+                                } else {
+                                    ui.label("Click on the image to select a point.");
+                                }
+                            });
+                        })
+                    });
+            }
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Load image dimensions once (could be cached if needed)
@@ -118,12 +136,12 @@ impl eframe::App for LivechartApp {
 
             // Draw crosshair
             self.paint_crosshair(ui, &image_response);
-
-            // Update cursor icon based on interaction
-            self.update_cursor_icon(ctx, &image_response);
+            ui.response()
+                .on_hover_and_drag_cursor(egui::CursorIcon::Move);
 
             // Show reset view button
-            self.show_reset_button(ctx);
+            self.reset_view_button(ctx);
+            self.hide_point_selection_sidebar_button(ctx, ui);
         });
     }
 }

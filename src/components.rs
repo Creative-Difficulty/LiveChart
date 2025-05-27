@@ -1,7 +1,7 @@
-use egui::{Id, Response, ThemePreference, Vec2};
+use egui::{Id, Response, ThemePreference, Ui, Vec2};
 
 use crate::app::LivechartApp;
-use crate::structs::{PixelCoordinate, ZoomState};
+use crate::structs::{PixelCoordinate, ViewState};
 
 impl LivechartApp {
     // Paint red line:
@@ -58,7 +58,7 @@ impl LivechartApp {
     }
 
     pub fn handle_zoom_input(&mut self, ui: &egui::Ui) {
-        let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
+        let zoom_state = self.data.view_state.get_or_insert(ViewState::default());
         let zoom_delta = ui.input(|i| {
             let mut delta = i.zoom_delta() - 1.0;
             if i.pointer.primary_down() {
@@ -75,7 +75,7 @@ impl LivechartApp {
     }
 
     pub fn handle_pan_input(&mut self, ui: &egui::Ui) {
-        let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
+        let zoom_state = self.data.view_state.get_or_insert(ViewState::default());
 
         let pan_delta = ui.input(|i| {
             if i.pointer.primary_down() {
@@ -91,17 +91,35 @@ impl LivechartApp {
     }
 
     pub fn calculate_display_parameters(&mut self, ui: &egui::Ui, image_size: Vec2) -> egui::Rect {
-        let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
+        let zoom_state = self.data.view_state.get_or_insert(ViewState::default());
 
-        let available_rect = ui.available_rect_before_wrap();
+        // Available space in the UI (including sidebars etc.)
+        let available_rect = ui.max_rect();
         let padding = 20.0;
         let max_size = available_rect.size() - Vec2::splat(padding * 2.0);
 
+        // Calculate the base scale to fully fit the image with some padding
         let base_scale = (max_size.x / image_size.x).min(max_size.y / image_size.y);
+        // Start fully zoomed in (as large as possible while fully fitting)
         let total_scale = base_scale * zoom_state.scale;
         let scaled_size = image_size * total_scale;
 
-        let mut image_rect = egui::Rect::from_center_size(available_rect.center(), scaled_size);
+        // Calculate the image rectangle centered in the available space
+        let center = available_rect.center();
+        let mut image_rect = egui::Rect::from_center_size(center, scaled_size);
+
+        // Allow extra panning beyond the edges of the image
+        let extra_pan_margin = 100.0; // Amount of extra space allowed for panning
+        let max_offset_x =
+            ((scaled_size.x - available_rect.width()) / 2.0 + extra_pan_margin).max(0.0);
+        let max_offset_y =
+            ((scaled_size.y - available_rect.height()) / 2.0 + extra_pan_margin).max(0.0);
+
+        // Clamp the user's panning offset
+        zoom_state.offset.x = zoom_state.offset.x.clamp(-max_offset_x, max_offset_x);
+        zoom_state.offset.y = zoom_state.offset.y.clamp(-max_offset_y, max_offset_y);
+
+        // Apply offset to the image rectangle
         image_rect.min += zoom_state.offset;
         image_rect.max += zoom_state.offset;
 
@@ -123,7 +141,6 @@ impl LivechartApp {
         image_response: &egui::Response,
         image_size: (u32, u32),
     ) {
-        // for point in &appdata.data.pixel_coords {
         let norm_x = point.x / image_size.0 as f32;
         let norm_y = point.y / image_size.1 as f32;
 
@@ -142,9 +159,8 @@ impl LivechartApp {
             egui::Vec2::splat(dot_radius * 3.0),
         )) {
             ui.painter()
-                .circle_stroke(image_pos, dot_radius * 1.5, (1.5, egui::Color32::WHITE));
+                .circle_stroke(image_pos, dot_radius * 1.5, (2.0, egui::Color32::RED));
         }
-        // }
     }
     // TODO: review AI slop below
     pub fn add_point(
@@ -166,26 +182,50 @@ impl LivechartApp {
         None
     }
 
-    pub fn update_cursor_icon(&self, ctx: &egui::Context, image_response: &egui::Response) {
-        let cursor_icon = if image_response.dragged() {
-            egui::CursorIcon::Move
-        // TODO: Implement this cursor hover logic so that it makes sense
-        // } else if image_response.hovered() {
-        //     egui::CursorIcon::Default
-        } else {
-            egui::CursorIcon::Default
-        };
-
-        ctx.set_cursor_icon(cursor_icon);
-    }
-
-    pub fn show_reset_button(&mut self, ctx: &egui::Context) {
+    pub fn reset_view_button(&mut self, ctx: &egui::Context) {
         egui::Area::new(Id::new("resetview"))
             .fixed_pos(egui::pos2(10.0, ctx.screen_rect().bottom() - 40.0))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
                 if ui.button("Reset View").clicked() {
                     self.data.view_state = None;
+                }
+            });
+    }
+
+    pub fn hide_point_selection_sidebar_button(&mut self, ctx: &egui::Context, ui: &Ui) {
+        egui::Area::new(Id::new("hide_ps_sidebar"))
+            .fixed_pos(egui::pos2(
+                //TODO fix layouting
+                ui.max_rect().right(),
+                ui.max_rect().top(),
+            ))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if ui
+                    .button(format!(
+                        "{} sidebar",
+                        if self
+                            .data
+                            .view_state
+                            .get_or_insert(ViewState::default())
+                            .ps_sidebar_shown
+                        {
+                            "Hide"
+                        } else {
+                            "Show"
+                        },
+                    ))
+                    .clicked()
+                {
+                    self.data
+                        .view_state
+                        .get_or_insert(ViewState::default())
+                        .ps_sidebar_shown = !self
+                        .data
+                        .view_state
+                        .get_or_insert(ViewState::default())
+                        .ps_sidebar_shown;
                 }
             });
     }

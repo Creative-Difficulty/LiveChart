@@ -8,7 +8,7 @@ pub struct LiveChartAppData {
     // value: f32,
     pub points: Vec<CoordinatePair>,
     #[serde(skip)]
-    pub view_state: Option<ZoomState>,
+    pub view_state: Option<ViewState>,
 }
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
 pub struct CoordinatePair {
@@ -61,16 +61,18 @@ impl Default for crate::app::LivechartApp {
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
-pub struct ZoomState {
+pub struct ViewState {
     pub scale: f32,
     pub offset: Vec2,
+    pub ps_sidebar_shown: bool,
 }
 
-impl Default for ZoomState {
+impl Default for ViewState {
     fn default() -> Self {
         Self {
             scale: 1.0,
             offset: Vec2 { x: 0.0, y: 0.0 },
+            ps_sidebar_shown: true,
         }
     }
 }
