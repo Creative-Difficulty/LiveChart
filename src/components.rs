@@ -1,7 +1,7 @@
 use egui::{Id, Response, ThemePreference, Ui, Vec2};
 
 use crate::app::LivechartApp;
-use crate::structs::{PixelCoordinate, ViewState};
+use crate::structs::{CoordinatePair, PixelCoordinate, ViewState};
 
 impl LivechartApp {
     // Paint red line:
@@ -51,14 +51,15 @@ impl LivechartApp {
         }
     }
 
-    pub fn handle_zoom_input(&mut self, ui: &egui::Ui) {
+    pub fn handle_zoom_input(&mut self, ui: &egui::Ui, image_response: &egui::Response) {
         let viewstate = self.data.view_state.get_or_insert(ViewState::default());
         let zoom_delta = ui.input(|i| {
             let mut delta = i.zoom_delta() - 1.0;
-            // Disable zoom while panning
-            if i.pointer.primary_down() {
+            // Disable zoom while dragging image
+            if image_response.dragged() {
                 delta = 0.0;
             }
+
             delta
         });
 
@@ -69,11 +70,11 @@ impl LivechartApp {
         }
     }
 
-    pub fn handle_pan_input(&mut self, ui: &egui::Ui) {
+    pub fn handle_pan_input(&mut self, ui: &egui::Ui, image_response: &egui::Response) {
         let viewstate = self.data.view_state.get_or_insert(ViewState::default());
 
         let pan_delta = ui.input(|i| {
-            if i.pointer.primary_down() {
+            if image_response.dragged() {
                 i.pointer.delta()
             } else {
                 Vec2::ZERO
@@ -88,7 +89,7 @@ impl LivechartApp {
     pub fn display_zoom_pan(&mut self, ui: &egui::Ui, image_size: Vec2) -> egui::Rect {
         let view_state = self.data.view_state.get_or_insert(ViewState::default());
 
-        // Available space in the UI (including sidebars etc.)
+        // Available space in the UI (including sidebars (???) etc.)
         let available_rect = ui.max_rect();
         let padding = 10.0;
         let max_size = available_rect.size() - Vec2::splat(padding * 2.0);
@@ -231,6 +232,77 @@ impl LivechartApp {
                         .get_or_insert(ViewState::default())
                         .ps_sidebar_shown;
                 }
+            });
+    }
+    pub fn label_with_delete_button_for_single_point(
+        &mut self,
+        ui: &mut egui::Ui,
+        point: &CoordinatePair,
+    ) {
+        let label = ui.label(format!(
+            "Selected point: ({}, {})",
+            point.pixels.x.round(),
+            point.pixels.y.round()
+        ));
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .add_sized(
+                    Vec2 {
+                        x: ui.available_width() * 0.2,
+                        y: label.rect.height(),
+                    },
+                    egui::Button::new("Delete"),
+                )
+                .clicked()
+            {
+                //TODO: more efficient
+                if let Some(index_to_delete) = self
+                    .data
+                    .points
+                    .iter()
+                    .position(|p| p.pixels == point.pixels)
+                {
+                    self.data.points.remove(index_to_delete);
+                }
+            }
+        });
+    }
+
+    pub fn sidebar(&mut self, ctx: &egui::Context) {
+        egui::SidePanel::right("sidebar")
+            .default_width(ctx.screen_rect().width() * 0.2) // initial sidebar width
+            .resizable(false)
+            .show(ctx, |ui: &mut egui::Ui| {
+                egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
+                    ui.heading("Points");
+
+                    ui.set_width(ctx.screen_rect().width() * 0.2);
+
+                    egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
+                        if !self.data.points.is_empty() {
+                            // self.data.points.reverse();
+
+                            // GOODEXAMPLE: Treating the last element of an iterator different than the rest.
+                            //  while let Some(point) = display_iter.next() {
+                            //     label_and_delete_button(ui, point, &mut self.data.pixel_coords);
+                            //     if display_iter.peek().is_some() {
+                            //         ui.separator();
+                            //     }
+                            // }
+
+                            //TODO: why do i have to clone here?
+                            for point in self.data.points.clone().iter().rev() {
+                                ui.horizontal_wrapped(|ui| {
+                                    self.label_with_delete_button_for_single_point(ui, point);
+                                });
+                                ui.separator();
+                            }
+                        } else {
+                            ui.label("Click on the chart to select a point.");
+                        }
+                    });
+                })
             });
     }
 }

@@ -58,46 +58,7 @@ impl eframe::App for LivechartApp {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         if let Some(viewstate) = &self.data.view_state {
             if viewstate.ps_sidebar_shown {
-                egui::SidePanel::right("sidebar")
-                    .default_width(ctx.screen_rect().width() * 0.2) // initial sidebar width
-                    .resizable(false)
-                    .show(ctx, |ui: &mut egui::Ui| {
-                        egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
-                            ui.heading("Points");
-
-                            ui.set_width(ctx.screen_rect().width() * 0.2);
-
-                            egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
-                                if !self.data.points.is_empty() {
-                                    // TODO? Avoid cloning to put newest on top
-                                    let mut display_list = self.data.points.clone();
-                                    display_list.reverse();
-                                    let display_iter = display_list.iter().peekable();
-
-                                    // GOODEXAMPLE: Treating the last element of an iterator different than the rest.
-                                    //  while let Some(point) = display_iter.next() {
-                                    //     label_and_delete_button(ui, point, &mut self.data.pixel_coords);
-                                    //     if display_iter.peek().is_some() {
-                                    //         ui.separator();
-                                    //     }
-                                    // }
-
-                                    for point in display_iter {
-                                        ui.horizontal_wrapped(|ui| {
-                                            label_with_delete_button(
-                                                ui,
-                                                point,
-                                                &mut self.data.points,
-                                            );
-                                        });
-                                        ui.separator();
-                                    }
-                                } else {
-                                    ui.label("Click on the image to select a point.");
-                                }
-                            });
-                        })
-                    });
+                self.sidebar(ctx);
             }
         }
 
@@ -111,15 +72,17 @@ impl eframe::App for LivechartApp {
             // Initialize or update zoom state
             // let zoom_state = self.data.view_state.get_or_insert(ZoomState::default());
 
-            // Handle user input
-            self.handle_zoom_input(ui);
-            self.handle_pan_input(ui);
-
             // Calculate display parameters
             let display_params = self.display_zoom_pan(ui, image_size_vec);
 
             // Display the image and get the response
             let image_response = self.display_image(ui, display_params);
+
+            if image_response.contains_pointer() {
+                // Handle user input
+                self.handle_pan_input(ui, &image_response);
+                self.handle_zoom_input(ui, &image_response);
+            }
 
             // Handle point creation
             if let Some(coord) = self.add_point(&image_response, image_size) {
@@ -158,31 +121,3 @@ impl eframe::App for LivechartApp {
 //         self.label_text = format!("Counter value: {}", self.counter);
 //     }
 // }
-
-fn label_with_delete_button(
-    ui: &mut egui::Ui,
-    point: &CoordinatePair,
-    pixel_coords: &mut Vec<CoordinatePair>,
-) {
-    let label = ui.label(format!(
-        "Selected point: ({}, {})",
-        point.pixels.x.round(),
-        point.pixels.y.round()
-    ));
-
-    if ui
-        .add_sized(
-            Vec2 {
-                x: ui.available_width() * 0.2,
-                y: label.rect.height(),
-            },
-            egui::Button::new("Delete"),
-        )
-        .clicked()
-    {
-        //TODO: more efficient
-        if let Some(index_to_delete) = pixel_coords.iter().position(|p| p == point) {
-            pixel_coords.remove(index_to_delete);
-        }
-    }
-}
