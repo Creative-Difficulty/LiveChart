@@ -12,21 +12,15 @@ impl LivechartApp {
     ) {
         if let Some(pos) = imagething.hover_pos() {
             let painter = ui.painter_at(imagething.rect);
-            // let crosshair_color = if ctx.theme() == egui::Theme::Dark {
-            //     egui::Color32::BLACK
-            // } else {
-            //     egui::Color32::WHITE
-            // };
 
-            let crosshair_color = egui::Color32::BLACK;
-            let crosshair_width = 1.5;
+            let stroke = egui::Stroke::new(1.5, egui::Color32::BLACK);
 
             painter.line_segment(
                 [
                     egui::pos2(pos.x, imagething.rect.top()),
                     egui::pos2(pos.x, imagething.rect.bottom()),
                 ],
-                egui::Stroke::new(crosshair_width, crosshair_color),
+                stroke,
             );
 
             painter.line_segment(
@@ -34,7 +28,7 @@ impl LivechartApp {
                     egui::pos2(imagething.rect.left(), pos.y),
                     egui::pos2(imagething.rect.right(), pos.y),
                 ],
-                egui::Stroke::new(crosshair_width, crosshair_color),
+                stroke,
             );
         }
     }
@@ -58,24 +52,25 @@ impl LivechartApp {
     }
 
     pub fn handle_zoom_input(&mut self, ui: &egui::Ui) {
-        let zoom_state = self.data.view_state.get_or_insert(ViewState::default());
+        let viewstate = self.data.view_state.get_or_insert(ViewState::default());
         let zoom_delta = ui.input(|i| {
             let mut delta = i.zoom_delta() - 1.0;
+            // Disable zoom while panning
             if i.pointer.primary_down() {
-                delta = 0.0; // Disable zoom while panning
+                delta = 0.0;
             }
             delta
         });
 
         if zoom_delta != 0.0 {
             let zoom_factor = 1.0 + zoom_delta * 0.1;
-            zoom_state.scale *= zoom_factor;
-            zoom_state.scale = zoom_state.scale.clamp(0.1, 10.0);
+            viewstate.scale *= zoom_factor;
+            viewstate.scale = viewstate.scale.clamp(0.1, 10.0);
         }
     }
 
     pub fn handle_pan_input(&mut self, ui: &egui::Ui) {
-        let zoom_state = self.data.view_state.get_or_insert(ViewState::default());
+        let viewstate = self.data.view_state.get_or_insert(ViewState::default());
 
         let pan_delta = ui.input(|i| {
             if i.pointer.primary_down() {
@@ -86,22 +81,22 @@ impl LivechartApp {
         });
 
         if pan_delta != Vec2::ZERO {
-            zoom_state.offset += pan_delta;
+            viewstate.offset += pan_delta;
         }
     }
 
-    pub fn calculate_display_parameters(&mut self, ui: &egui::Ui, image_size: Vec2) -> egui::Rect {
-        let zoom_state = self.data.view_state.get_or_insert(ViewState::default());
+    pub fn display_zoom_pan(&mut self, ui: &egui::Ui, image_size: Vec2) -> egui::Rect {
+        let view_state = self.data.view_state.get_or_insert(ViewState::default());
 
         // Available space in the UI (including sidebars etc.)
         let available_rect = ui.max_rect();
-        let padding = 20.0;
+        let padding = 10.0;
         let max_size = available_rect.size() - Vec2::splat(padding * 2.0);
 
         // Calculate the base scale to fully fit the image with some padding
         let base_scale = (max_size.x / image_size.x).min(max_size.y / image_size.y);
         // Start fully zoomed in (as large as possible while fully fitting)
-        let total_scale = base_scale * zoom_state.scale;
+        let total_scale = base_scale * view_state.scale;
         let scaled_size = image_size * total_scale;
 
         // Calculate the image rectangle centered in the available space
@@ -116,12 +111,12 @@ impl LivechartApp {
             ((scaled_size.y - available_rect.height()) / 2.0 + extra_pan_margin).max(0.0);
 
         // Clamp the user's panning offset
-        zoom_state.offset.x = zoom_state.offset.x.clamp(-max_offset_x, max_offset_x);
-        zoom_state.offset.y = zoom_state.offset.y.clamp(-max_offset_y, max_offset_y);
+        view_state.offset.x = view_state.offset.x.clamp(-max_offset_x, max_offset_x);
+        view_state.offset.y = view_state.offset.y.clamp(-max_offset_y, max_offset_y);
 
         // Apply offset to the image rectangle
-        image_rect.min += zoom_state.offset;
-        image_rect.max += zoom_state.offset;
+        image_rect.min += view_state.offset;
+        image_rect.max += view_state.offset;
 
         image_rect
     }
@@ -176,7 +171,16 @@ impl LivechartApp {
                 let y = (offset.y / image_response.rect.height() * image_size.1 as f32)
                     .clamp(0.0, image_size.1 as f32);
 
-                return Some(PixelCoordinate { x, y });
+                if !self
+                    .data
+                    .points
+                    .iter()
+                    .any(|coordpair| coordpair.pixels == PixelCoordinate { x, y })
+                {
+                    return Some(PixelCoordinate { x, y });
+                } else {
+                    return None;
+                }
             }
         }
         None

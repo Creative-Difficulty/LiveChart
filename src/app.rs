@@ -116,12 +116,12 @@ impl eframe::App for LivechartApp {
             self.handle_pan_input(ui);
 
             // Calculate display parameters
-            let display_params = self.calculate_display_parameters(ui, image_size_vec);
+            let display_params = self.display_zoom_pan(ui, image_size_vec);
 
             // Display the image and get the response
             let image_response = self.display_image(ui, display_params);
 
-            // Handle point selection
+            // Handle point creation
             if let Some(coord) = self.add_point(&image_response, image_size) {
                 self.data.points.push(CoordinatePair {
                     pixels: coord,
