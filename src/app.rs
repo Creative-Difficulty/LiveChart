@@ -67,6 +67,7 @@ impl eframe::App for LivechartApp {
             let image_size = image::open("./test_chart_vertical_ils_plate.png")
                 .unwrap()
                 .dimensions();
+
             let image_size_vec = Vec2::new(image_size.0 as f32, image_size.1 as f32);
 
             // Initialize or update zoom state

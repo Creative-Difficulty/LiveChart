@@ -5,11 +5,7 @@ use crate::structs::{CoordinatePair, PixelCoordinate, ViewState};
 
 impl LivechartApp {
     // Paint red line:
-    pub fn paint_crosshair(
-        &self,
-        ui: &egui::Ui,
-        imagething: &Response, /*ctx: &egui::Context*/
-    ) {
+    pub fn paint_crosshair(&self, ui: &egui::Ui, imagething: &Response) {
         if let Some(pos) = imagething.hover_pos() {
             let painter = ui.painter_at(imagething.rect);
 
@@ -51,12 +47,12 @@ impl LivechartApp {
         }
     }
 
-    pub fn handle_zoom_input(&mut self, ui: &egui::Ui, image_response: &egui::Response) {
+    pub fn handle_zoom_input(&mut self, ui: &egui::Ui, pan_response: &Response) {
         let viewstate = self.data.view_state.get_or_insert(ViewState::default());
         let zoom_delta = ui.input(|i| {
             let mut delta = i.zoom_delta() - 1.0;
             // Disable zoom while dragging image
-            if image_response.dragged() {
+            if pan_response.dragged() {
                 delta = 0.0;
             }
 
@@ -89,14 +85,22 @@ impl LivechartApp {
     pub fn display_zoom_pan(&mut self, ui: &egui::Ui, image_size: Vec2) -> egui::Rect {
         let view_state = self.data.view_state.get_or_insert(ViewState::default());
 
-        // Available space in the UI (including sidebars (???) etc.)
-        let available_rect = ui.max_rect();
+        // Padding on whichever side is closer to clipping
         let padding = 10.0;
+
+        // Amount of extra space allowed to the sides for panning
+        let extra_pan_margin = ui.max_rect().right() * 0.5;
+
+        // Central panel's size: https://github.com/emilk/egui/discussions/4765
+        let available_rect = ui.max_rect();
+
+        // Maximum image size
         let max_size = available_rect.size() - Vec2::splat(padding * 2.0);
 
-        // Calculate the base scale to fully fit the image with some padding
+        // Scale of image to fully fit with some padding
         let base_scale = (max_size.x / image_size.x).min(max_size.y / image_size.y);
-        // Start fully zoomed in (as large as possible while fully fitting)
+
+        // Scale the base scale to the current zoom
         let total_scale = base_scale * view_state.scale;
         let scaled_size = image_size * total_scale;
 
@@ -105,7 +109,6 @@ impl LivechartApp {
         let mut image_rect = egui::Rect::from_center_size(center, scaled_size);
 
         // Allow extra panning beyond the edges of the image
-        let extra_pan_margin = 100.0; // Amount of extra space allowed for panning
         let max_offset_x =
             ((scaled_size.x - available_rect.width()) / 2.0 + extra_pan_margin).max(0.0);
         let max_offset_y =
@@ -234,6 +237,7 @@ impl LivechartApp {
                 }
             });
     }
+
     pub fn label_with_delete_button_for_single_point(
         &mut self,
         ui: &mut egui::Ui,
@@ -272,12 +276,18 @@ impl LivechartApp {
     pub fn sidebar(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("sidebar")
             .default_width(ctx.screen_rect().width() * 0.2) // initial sidebar width
-            .resizable(false)
+            .resizable(true)
             .show(ctx, |ui: &mut egui::Ui| {
                 egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading("Points");
 
-                    ui.set_width(ctx.screen_rect().width() * 0.2);
+                    // Doesn't work / goofy
+                    // ui.set_width_range(
+                    //     ctx.screen_rect().width() * 0.1..=ctx.screen_rect().width() * 0.5,
+                    // );
+                    // OR
+                    // ui.set_min_width(ctx.screen_rect().width() * 0.1);
+                    // ui.set_max_width(ctx.screen_rect().width() * 0.5);
 
                     egui::containers::scroll_area::ScrollArea::vertical().show(ui, |ui| {
                         if !self.data.points.is_empty() {
